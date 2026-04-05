@@ -179,20 +179,22 @@ Compares **pre-norm** (LayerNorm before attention/FFN) against the baseline's **
 
 ## Comparative Results
 
+Run `train.py` or `notebook.py` to fill in this table with actual results:
+
 | Model | Parameters | Epochs | LR | Train Time | Wiki Valid Acc% | EP Valid Acc% | EP Valid Loss | EP Perplexity |
 |---|---|---|---|---|---|---|---|---|
-| Baseline (1L, 1H, sum) | ~25.7M | 4 | 1e-3 | ~210s | ~30.5 | ~22.8 | ~4.10 | ~60.3 |
-| Model 1: 2-Layer Transformer | ~26.2M | 4 | 1e-3 | ~280s | ~31.2 | ~23.5 | ~4.02 | ~55.7 |
-| Model 2: Multi-Head (4H) | ~25.7M | 4 | 1e-3 | ~220s | ~31.0 | ~23.3 | ~4.05 | ~57.4 |
-| Model 3: Shared Emb + Mean | ~0.7M* | 4 | 1e-3 | ~210s | ~30.8 | ~23.1 | ~4.08 | ~59.1 |
-| Model 4: MLP (no attention) | ~25.9M | 4 | 1e-3 | ~150s | ~28.5 | ~21.0 | ~4.30 | ~73.7 |
-| Model 5: Deep MH + Shared + CosLR | ~1.2M* | 5 | 5e-4 | ~350s | ~31.8 | ~24.2 | ~3.95 | ~52.1 |
-| Model 6: CLS Token | ~25.7M | 4 | 1e-3 | ~230s | ~31.0 | ~23.2 | ~4.06 | ~58.0 |
-| Model 7: Pre-norm (Llama-style) | ~1.2M* | 5 | 5e-4 | ~350s | ~31.5 | ~24.0 | ~3.97 | ~53.0 |
+| Baseline (1L, 1H, sum) | | 4 | 1e-3 | | | | | |
+| Model 1: 2-Layer Transformer | | 4 | 1e-3 | | | | | |
+| Model 2: Multi-Head (4H) | | 4 | 1e-3 | | | | | |
+| Model 3: Shared Emb + Mean | | 4 | 1e-3 | | | | | |
+| Model 4: MLP (no attention) | | 4 | 1e-3 | | | | | |
+| Model 5: Deep MH + Shared + CosLR | | 5 | 5e-4 | | | | | |
+| Model 6: CLS Token | | 4 | 1e-3 | | | | | |
+| Model 7: Pre-norm (Llama-style) | | 5 | 5e-4 | | | | | |
 
-*Models 3, 5, and 7 have significantly fewer parameters due to weight tying (the large V x 256 output projection matrix is shared with the input embedding).
+The `train.py` script automatically prints a comparison table and saves results to `data/ca-100/comparison_results.csv`.
 
-> **Note:** Exact values depend on the training run. The table above shows representative/expected results. Run `train.py` or `notebook.py` to obtain actual numbers on your hardware.
+*Note: Models with shared embeddings (3, 5, 7) will have significantly fewer parameters due to weight tying.*
 
 ## Key Findings
 

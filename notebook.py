@@ -468,40 +468,25 @@ context_words = params.window_size - 1
 MODEL_CONFIGS = [
     ('Baseline (1L, 1H, sum)',
      lambda: Baseline(len(vocab), 256, context_words),
-     {'epochs': 4, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
-
-    ('Model 1: 2-Layer Transformer',
-     lambda: MultiLayerTransformer(len(vocab), 256, num_layers=2, context_words=context_words),
-     {'epochs': 4, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
+     {'epochs': 2, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
 
     ('Model 2: Multi-Head (4H)',
      lambda: MultiHeadTransformer(len(vocab), 256, num_heads=4, context_words=context_words),
-     {'epochs': 4, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
+     {'epochs': 2, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
 
     ('Model 3: Shared Emb + Mean Pool',
      lambda: SharedEmbeddingTransformer(len(vocab), 256, num_heads=4, context_words=context_words),
-     {'epochs': 4, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
-
-    ('Model 4: MLP (no attention)',
-     lambda: MLPPredictor(len(vocab), 256, hidden_dim=512, context_words=context_words),
-     {'epochs': 4, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
-
-    ('Model 5: Deep MH + Shared + CosLR',
-     lambda: DeepSharedTransformer(len(vocab), 256, num_heads=4, num_layers=2, context_words=context_words),
-     {'epochs': 5, 'batch_size': 2048, 'lr': 5e-4, 'scheduler': True}),
+     {'epochs': 2, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
 
     ('Model 6: CLS Token',
      lambda: CLSTransformer(len(vocab), 256, num_heads=4, context_words=context_words),
-     {'epochs': 4, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
-
-    ('Model 7: Pre-norm (Llama-style)',
-     lambda: PreNormTransformer(len(vocab), 256, num_heads=4, num_layers=2, context_words=context_words),
-     {'epochs': 5, 'batch_size': 2048, 'lr': 5e-4, 'scheduler': True}),
+     {'epochs': 2, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
 ]
 
 # %% Train all models and collect results
 criterion = nn.CrossEntropyLoss(reduction='sum')
 results = []
+saved_states = {}  # Save best state_dict per model to avoid retraining
 
 for name, model_fn, hparams in MODEL_CONFIGS:
     print(f'\n{"="*60}')
@@ -533,15 +518,18 @@ for name, model_fn, hparams in MODEL_CONFIGS:
         print(f'  Epoch {epoch}: train={train_acc:.1f}% | wiki_valid={wiki_acc:.1f}% | EP_valid={ep_acc:.1f}% (loss={ep_loss:.3f})')
         if ep_acc > best_ep_acc:
             best_ep_acc = ep_acc
-            best_state = {k: v.clone() for k, v in model.state_dict().items()}
+            best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
 
     elapsed = time.time() - t0
-    model.load_state_dict(best_state)
 
-    # Final evaluation
+    # Restore best checkpoint and evaluate
+    model.load_state_dict({k: v.to(device) for k, v in best_state.items()})
     wiki_acc, wiki_loss = evaluate(model, criterion, data[1][0], data[1][1], hparams['batch_size'], device)
     ep_acc, ep_loss = evaluate(model, criterion, valid_x, valid_y, hparams['batch_size'], device)
     ppl = math.exp(ep_loss)
+
+    # Save state for later reuse (on CPU to save GPU memory)
+    saved_states[name] = best_state
 
     results.append({
         'Model': name,
@@ -556,6 +544,10 @@ for name, model_fn, hparams in MODEL_CONFIGS:
     })
     print(f'  >> Best: EP_acc={ep_acc:.1f}%, ppl={ppl:.1f}, time={elapsed:.0f}s')
 
+    # Free GPU memory before next model
+    del model
+    torch.cuda.empty_cache() if torch.cuda.is_available() else None
+
 # %% Comparison table
 print('\n' + '='*60)
 print('  COMPARISON TABLE')
@@ -563,34 +555,15 @@ print('='*60)
 results_df = pd.DataFrame(results)
 print(results_df.to_string(index=False))
 
-# %% Generate submission with best model
+# %% Generate submission with best model (no retraining needed)
 best_idx = max(range(len(results)), key=lambda i: results[i]['EP Valid Acc%'])
 best_name = results[best_idx]['Model']
 print(f'\nBest model: {best_name} (EP Valid Acc = {results[best_idx]["EP Valid Acc%"]}%)')
 
-# Re-load best model
+# Reload best model from saved state
 best_model_fn = MODEL_CONFIGS[best_idx][1]
-best_hparams = MODEL_CONFIGS[best_idx][2]
 model = best_model_fn().to(device)
-
-# Retrain best model to get state (or use saved)
-optimizer = torch.optim.Adam(model.parameters(), lr=best_hparams['lr'])
-scheduler = None
-if best_hparams['scheduler']:
-    total_steps = best_hparams['epochs'] * (len(data[0][0]) // best_hparams['batch_size'] + 1)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=total_steps, eta_min=1e-6)
-
-best_ep_acc = 0
-for epoch in range(best_hparams['epochs']):
-    train_epoch(model, criterion, optimizer,
-                data[0][0], data[0][1], best_hparams['batch_size'], device, scheduler)
-    ep_acc, _ = evaluate(model, criterion, valid_x, valid_y, best_hparams['batch_size'], device)
-    if ep_acc > best_ep_acc:
-        best_ep_acc = ep_acc
-        best_state = {k: v.clone() for k, v in model.state_dict().items()}
-
-model.load_state_dict(best_state)
+model.load_state_dict({k: v.to(device) for k, v in saved_states[best_name].items()})
 torch.save(model.state_dict(), params.modelname)
 
 # %% Generate test predictions
