@@ -304,3 +304,92 @@ class DeepSharedTransformer(nn.Module):
         x = h.mean(dim=1)
         y = F.linear(x, self.emb.weight, self.output_bias)
         return y
+
+
+# ---------------------------------------------------------------------------
+# Model 6: CLS token for prediction
+# ---------------------------------------------------------------------------
+
+class CLSTransformer(nn.Module):
+    """Use a learnable [CLS] token prepended to the context; predict from CLS output."""
+    def __init__(self, num_embeddings, embedding_dim, num_heads=4,
+                 dim_feedforward=512, dropout=0.1, context_words=6):
+        super().__init__()
+        self.emb = nn.Embedding(num_embeddings, embedding_dim, padding_idx=0)
+        self.cls_token = nn.Parameter(torch.empty(1, 1, embedding_dim))
+        nn.init.normal_(self.cls_token, std=0.02)
+        # Position embeddings: CLS + context_words
+        self.position_embedding = nn.Parameter(
+            torch.empty(1 + context_words, embedding_dim))
+        nn.init.xavier_uniform_(self.position_embedding)
+        self.att = MultiHeadTransformerLayer(embedding_dim, num_heads, dim_feedforward, dropout)
+        self.lin = nn.Linear(embedding_dim, num_embeddings, bias=False)
+
+    def forward(self, x):
+        B = x.size(0)
+        e = self.emb(x)  # (B, W, E)
+        # Prepend CLS token
+        cls = self.cls_token.expand(B, -1, -1)  # (B, 1, E)
+        u = torch.cat([cls, e], dim=1)  # (B, 1+W, E)
+        u = u + self.position_embedding
+        v = self.att(u)
+        # Use only the CLS output (position 0) for prediction
+        cls_out = v[:, 0, :]  # (B, E)
+        y = self.lin(cls_out)
+        return y
+
+
+# ---------------------------------------------------------------------------
+# Model 7: Pre-norm Transformer (Llama-style) vs baseline post-norm
+# ---------------------------------------------------------------------------
+
+class PreNormTransformerLayer(nn.Module):
+    """Pre-norm transformer layer (norm before attention/FFN, as in GPT-2/Llama)."""
+    def __init__(self, d_model, num_heads=4, dim_feedforward=512, dropout=0.1):
+        super().__init__()
+        self.self_attn = MultiHeadSelfAttention(d_model, num_heads, dropout)
+        self.linear1 = nn.Linear(d_model, dim_feedforward)
+        self.dropout = nn.Dropout(dropout)
+        self.linear2 = nn.Linear(dim_feedforward, d_model)
+        self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
+        self.dropout1 = nn.Dropout(dropout)
+        self.dropout2 = nn.Dropout(dropout)
+
+    def forward(self, src):
+        # Pre-norm: normalize BEFORE attention (unlike post-norm baseline)
+        src2 = self.norm1(src)
+        src2 = self.self_attn(src2)
+        src = src + self.dropout1(src2)
+        # Pre-norm: normalize BEFORE FFN
+        src2 = self.norm2(src)
+        src2 = self.linear2(self.dropout(F.relu(self.linear1(src2))))
+        src = src + self.dropout2(src2)
+        return src
+
+
+class PreNormTransformer(nn.Module):
+    """Multi-head Transformer with pre-norm (Llama-style) layer ordering."""
+    def __init__(self, num_embeddings, embedding_dim, num_heads=4, num_layers=2,
+                 dim_feedforward=512, dropout=0.1, context_words=6):
+        super().__init__()
+        self.emb = nn.Embedding(num_embeddings, embedding_dim, padding_idx=0)
+        self.layers = nn.ModuleList([
+            PreNormTransformerLayer(embedding_dim, num_heads, dim_feedforward, dropout)
+            for _ in range(num_layers)
+        ])
+        self.position_embedding = nn.Parameter(torch.empty(context_words, embedding_dim))
+        nn.init.xavier_uniform_(self.position_embedding)
+        self.final_norm = nn.LayerNorm(embedding_dim)
+        # Shared output weights
+        self.output_bias = nn.Parameter(torch.zeros(num_embeddings))
+
+    def forward(self, x):
+        e = self.emb(x)
+        h = e + self.position_embedding
+        for layer in self.layers:
+            h = layer(h)
+        h = self.final_norm(h)
+        x = h.mean(dim=1)
+        y = F.linear(x, self.emb.weight, self.output_bias)
+        return y

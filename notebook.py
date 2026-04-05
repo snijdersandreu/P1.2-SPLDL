@@ -329,6 +329,74 @@ class DeepSharedTransformer(nn.Module):
         x = h.mean(dim=1)
         return F.linear(x, self.emb.weight, self.output_bias)
 
+# Model 6: CLS token for prediction
+class CLSTransformer(nn.Module):
+    def __init__(self, num_embeddings, embedding_dim, num_heads=4,
+                 dim_feedforward=512, dropout=0.1, context_words=6):
+        super().__init__()
+        self.emb = nn.Embedding(num_embeddings, embedding_dim, padding_idx=0)
+        self.cls_token = nn.Parameter(torch.empty(1, 1, embedding_dim))
+        nn.init.normal_(self.cls_token, std=0.02)
+        self.position_embedding = nn.Parameter(
+            torch.empty(1 + context_words, embedding_dim))
+        nn.init.xavier_uniform_(self.position_embedding)
+        self.att = MultiHeadTransformerLayer(embedding_dim, num_heads, dim_feedforward, dropout)
+        self.lin = nn.Linear(embedding_dim, num_embeddings, bias=False)
+
+    def forward(self, x):
+        B = x.size(0)
+        e = self.emb(x)
+        cls = self.cls_token.expand(B, -1, -1)
+        u = torch.cat([cls, e], dim=1)
+        u = u + self.position_embedding
+        v = self.att(u)
+        return self.lin(v[:, 0, :])
+
+# Model 7: Pre-norm Transformer (Llama-style)
+class PreNormTransformerLayer(nn.Module):
+    def __init__(self, d_model, num_heads=4, dim_feedforward=512, dropout=0.1):
+        super().__init__()
+        self.self_attn = MultiHeadSelfAttention(d_model, num_heads, dropout)
+        self.linear1 = nn.Linear(d_model, dim_feedforward)
+        self.dropout = nn.Dropout(dropout)
+        self.linear2 = nn.Linear(dim_feedforward, d_model)
+        self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
+        self.dropout1 = nn.Dropout(dropout)
+        self.dropout2 = nn.Dropout(dropout)
+
+    def forward(self, src):
+        src2 = self.norm1(src)
+        src2 = self.self_attn(src2)
+        src = src + self.dropout1(src2)
+        src2 = self.norm2(src)
+        src2 = self.linear2(self.dropout(F.relu(self.linear1(src2))))
+        src = src + self.dropout2(src2)
+        return src
+
+class PreNormTransformer(nn.Module):
+    def __init__(self, num_embeddings, embedding_dim, num_heads=4, num_layers=2,
+                 dim_feedforward=512, dropout=0.1, context_words=6):
+        super().__init__()
+        self.emb = nn.Embedding(num_embeddings, embedding_dim, padding_idx=0)
+        self.layers = nn.ModuleList([
+            PreNormTransformerLayer(embedding_dim, num_heads, dim_feedforward, dropout)
+            for _ in range(num_layers)
+        ])
+        self.position_embedding = nn.Parameter(torch.empty(context_words, embedding_dim))
+        nn.init.xavier_uniform_(self.position_embedding)
+        self.final_norm = nn.LayerNorm(embedding_dim)
+        self.output_bias = nn.Parameter(torch.zeros(num_embeddings))
+
+    def forward(self, x):
+        e = self.emb(x)
+        h = e + self.position_embedding
+        for layer in self.layers:
+            h = layer(h)
+        h = self.final_norm(h)
+        x = h.mean(dim=1)
+        return F.linear(x, self.emb.weight, self.output_bias)
+
 # %% Training and evaluation functions
 def train_epoch(model, criterion, optimizer, idata, target, batch_size, device, scheduler=None, log=False):
     model.train()
@@ -420,6 +488,14 @@ MODEL_CONFIGS = [
 
     ('Model 5: Deep MH + Shared + CosLR',
      lambda: DeepSharedTransformer(len(vocab), 256, num_heads=4, num_layers=2, context_words=context_words),
+     {'epochs': 5, 'batch_size': 2048, 'lr': 5e-4, 'scheduler': True}),
+
+    ('Model 6: CLS Token',
+     lambda: CLSTransformer(len(vocab), 256, num_heads=4, context_words=context_words),
+     {'epochs': 4, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
+
+    ('Model 7: Pre-norm (Llama-style)',
+     lambda: PreNormTransformer(len(vocab), 256, num_heads=4, num_layers=2, context_words=context_words),
      {'epochs': 5, 'batch_size': 2048, 'lr': 5e-4, 'scheduler': True}),
 ]
 

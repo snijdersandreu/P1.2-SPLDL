@@ -21,6 +21,8 @@ from models import (
     SharedEmbeddingTransformer,
     MLPPredictor,
     DeepSharedTransformer,
+    CLSTransformer,
+    PreNormTransformer,
 )
 
 
@@ -221,6 +223,26 @@ def get_model_configs(vocab_size, context_words=6):
             'lr': 5e-4,
             'use_scheduler': True,
             'description': 'emb=256, ff=512, 2 layers, 4 heads, mean pool, tied, cosine LR',
+        },
+        'Model 6: CLS token prediction': {
+            'model_fn': lambda: CLSTransformer(
+                vocab_size, 256, num_heads=4, dim_feedforward=512,
+                dropout=0.1, context_words=context_words),
+            'epochs': 4,
+            'batch_size': 2048,
+            'lr': 1e-3,
+            'use_scheduler': False,
+            'description': 'emb=256, ff=512, 1 layer, 4 heads, CLS token pooling',
+        },
+        'Model 7: Pre-norm (Llama-style)': {
+            'model_fn': lambda: PreNormTransformer(
+                vocab_size, 256, num_heads=4, num_layers=2,
+                dim_feedforward=512, dropout=0.1, context_words=context_words),
+            'epochs': 5,
+            'batch_size': 2048,
+            'lr': 5e-4,
+            'use_scheduler': True,
+            'description': 'emb=256, ff=512, 2 layers, 4 heads, pre-norm, mean pool, tied, cosine LR',
         },
     }
     return configs
