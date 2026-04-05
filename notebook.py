@@ -468,35 +468,19 @@ context_words = params.window_size - 1
 MODEL_CONFIGS = [
     ('Baseline (1L, 1H, sum)',
      lambda: Baseline(len(vocab), 256, context_words),
-     {'epochs': 4, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
-
-    ('Model 1: 2-Layer Transformer',
-     lambda: MultiLayerTransformer(len(vocab), 256, num_layers=2, context_words=context_words),
-     {'epochs': 4, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
+     {'epochs': 2, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
 
     ('Model 2: Multi-Head (4H)',
      lambda: MultiHeadTransformer(len(vocab), 256, num_heads=4, context_words=context_words),
-     {'epochs': 4, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
+     {'epochs': 2, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
 
     ('Model 3: Shared Emb + Mean Pool',
      lambda: SharedEmbeddingTransformer(len(vocab), 256, num_heads=4, context_words=context_words),
-     {'epochs': 4, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
-
-    ('Model 4: MLP (no attention)',
-     lambda: MLPPredictor(len(vocab), 256, hidden_dim=512, context_words=context_words),
-     {'epochs': 4, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
-
-    ('Model 5: Deep MH + Shared + CosLR',
-     lambda: DeepSharedTransformer(len(vocab), 256, num_heads=4, num_layers=2, context_words=context_words),
-     {'epochs': 5, 'batch_size': 2048, 'lr': 5e-4, 'scheduler': True}),
+     {'epochs': 2, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
 
     ('Model 6: CLS Token',
      lambda: CLSTransformer(len(vocab), 256, num_heads=4, context_words=context_words),
-     {'epochs': 4, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
-
-    ('Model 7: Pre-norm (Llama-style)',
-     lambda: PreNormTransformer(len(vocab), 256, num_heads=4, num_layers=2, context_words=context_words),
-     {'epochs': 5, 'batch_size': 2048, 'lr': 5e-4, 'scheduler': True}),
+     {'epochs': 2, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
 ]
 
 # %% Train all models and collect results
