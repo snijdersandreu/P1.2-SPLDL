@@ -466,20 +466,8 @@ context_words = params.window_size - 1
 
 # %% Define all model configurations
 MODEL_CONFIGS = [
-    ('Baseline (1L, 1H, sum)',
-     lambda: Baseline(len(vocab), 256, context_words),
-     {'epochs': 2, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
-
-    ('Model 2: Multi-Head (4H)',
-     lambda: MultiHeadTransformer(len(vocab), 256, num_heads=4, context_words=context_words),
-     {'epochs': 2, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
-
-    ('Model 3: Shared Emb + Mean Pool',
+    ('Shared Emb + Multi-Head + Mean Pool',
      lambda: SharedEmbeddingTransformer(len(vocab), 256, num_heads=4, context_words=context_words),
-     {'epochs': 2, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
-
-    ('Model 6: CLS Token',
-     lambda: CLSTransformer(len(vocab), 256, num_heads=4, context_words=context_words),
      {'epochs': 2, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
 ]
 
