@@ -468,7 +468,7 @@ context_words = params.window_size - 1
 MODEL_CONFIGS = [
     ('Shared Emb + Multi-Head + Mean Pool',
      lambda: SharedEmbeddingTransformer(len(vocab), 256, num_heads=4, context_words=context_words),
-     {'epochs': 3, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
+     {'epochs': 2, 'batch_size': 2048, 'lr': 1e-3, 'scheduler': False}),
 ]
 
 # %% Train all models and collect results
